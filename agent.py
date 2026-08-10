@@ -4,7 +4,7 @@ import os
 import requests
 import json
 from browser_use import Agent
-from langchain_google_genai import ChatGoogleGenerativeAI
+from browser_use.llm import ChatGoogle
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -43,8 +43,7 @@ async def main():
     db_conn = setup_db()
     cursor = db_conn.cursor()
     
-    # כאן אנחנו נותנים לבינה המלאכותית את ההוראות המדויקות לאינטרנט האמיתי
-   task_description = """
+    task_description = """
     Go to Israeli job boards (like drushim.co.il, alljobs.co.il) or LinkedIn.
     Search for student roles in the area between Haifa and Karmiel (North Israel).
     Focus specifically on these fields: Data Analyst, Information Systems (מערכות מידע), PMO, and Project Management (ניהול פרויקטים).
@@ -61,16 +60,14 @@ async def main():
     Do not add any text before or after the JSON.
     """
     
-    # הגדרת המודל והסוכן שיפתח את הדפדפן
-    llm = ChatGoogleGenerativeAI(model='gemini-2.5-pro', google_api_key=os.getenv("LLM_API_KEY"))
+    # שימוש במעטפת הייעודית של הספרייה במקום בזו של LangChain
+    llm = ChatGoogle(model='gemini-2.5-pro', api_key=os.getenv("LLM_API_KEY"))
     agent = Agent(task=task_description, llm=llm)
     
     print("מתחיל סריקה אמיתית ברחבי הרשת...")
-    # הפקודה הזו אשכרה פותחת דפדפן נסתר, גולשת לאתרים וקוראת משרות
     history = await agent.run()
     
     try:
-        # חילוץ התשובה מהמודל והמרתה למבנה נתונים
         final_result = history.final_result()
         if "```json" in final_result:
             final_result = final_result.split("```json")[1].split("```")[0].strip()
@@ -79,15 +76,12 @@ async def main():
             
         job = json.loads(final_result)
         
-        # בדיקה שאכן מדובר במשרה שתואמת את הדרישות שלנו
         if job.get("is_relevant_role") and job.get("is_student_position") and job.get("location_match"):
             try:
-                # ניסיון לשמור במסד הנתונים כדי למנוע כפילויות מחר
                 cursor.execute("INSERT INTO jobs (url, title, company) VALUES (?, ?, ?)", 
                                (job["job_url"], job["job_title"], job["company_name"]))
                 db_conn.commit()
                 
-                # שליחת ההתראה לטלגרם
                 send_telegram_alert(job)
                 print(f"נמצאה משרה אמיתית! התראה נשלחה: {job['job_title']}")
                 
