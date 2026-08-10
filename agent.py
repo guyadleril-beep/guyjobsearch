@@ -44,13 +44,20 @@ async def main():
     cursor = db_conn.cursor()
     
     # כאן אנחנו נותנים לבינה המלאכותית את ההוראות המדויקות לאינטרנט האמיתי
-    task_description = """
-    Go to the Israeli job board drushim.co.il or alljobs.co.il.
-    Search for jobs matching "סטודנט תעשייה וניהול" in the area of "חיפה" or "כרמיאל".
-    Find ONE real, relevant job that is actively hiring.
-    Return the final result STRICTLY as a valid JSON object with the following keys:
+   task_description = """
+    Go to Israeli job boards (like drushim.co.il, alljobs.co.il) or LinkedIn.
+    Search for student roles in the area between Haifa and Karmiel (North Israel).
+    Focus specifically on these fields: Data Analyst, Information Systems (מערכות מידע), PMO, and Project Management (ניהול פרויקטים).
+    
+    CRITICAL STEP: You must read the FULL job description and the requirements section for the jobs you find.
+    Classify the job as a match ONLY if all the following conditions are met:
+    1. It is a part-time student position.
+    2. The requirements specifically mention or highly fit a student studying Industrial Engineering (הנדסת תעשייה וניהול) with a technical/information systems orientation.
+    3. STRICTLY EXCLUDE classic manufacturing roles: reject any job related to PP&C (תפ"י / תכנון פיקוח ייצור), Quality Control (בקרת איכות / הנדסת איכות), and production floor roles.
+    
+    Return ONE matching job STRICTLY as a valid JSON object with the following keys:
     "is_relevant_role" (boolean), "is_student_position" (boolean), "location_match" (boolean), 
-    "job_title" (string), "company_name" (string), "job_url" (string URL), "reasoning" (string, short explanation).
+    "job_title" (string), "company_name" (string), "job_url" (string URL), "reasoning" (string, short explanation of why it fits the Information Systems/Data criteria and how it matches an IE student).
     Do not add any text before or after the JSON.
     """
     
