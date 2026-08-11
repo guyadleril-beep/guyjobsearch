@@ -44,19 +44,22 @@ async def main():
     cursor = db_conn.cursor()
     
     task_description = """
-    Go to Israeli job boards (like drushim.co.il, alljobs.co.il) or LinkedIn.
-    Search for student roles in the area between Haifa and Karmiel (North Israel).
-    Focus specifically on these fields: Data Analyst, Information Systems (מערכות מידע), PMO, and Project Management (ניהול פרויקטים).
+    Go DIRECTLY to the following career pages in Israel:
+    1. https://career.rafael.co.il/students/
+    2. https://career.rafael.co.il/search/
+    3. https://www.alljobs.co.il/m/p/company?cid=47510
     
-    CRITICAL STEP: You must read the FULL job description and the requirements section for the jobs you find.
-    Classify the job as a match ONLY if all the following conditions are met:
-    1. It is a part-time student position.
-    2. The requirements specifically mention or highly fit a student studying Industrial Engineering (הנדסת תעשייה וניהול) with a technical/information systems orientation.
-    3. STRICTLY EXCLUDE classic manufacturing roles: reject any job related to PP&C (תפ"י / תכנון פיקוח ייצור), Quality Control (בקרת איכות / הנדסת איכות), and production floor roles.
+    Scan the job listings on these pages. 
+    Find the BEST match for a student position in Data Analysis, PMO, or Information Systems.
     
-    Return ONE matching job STRICTLY as a valid JSON object with the following keys:
+    Rules for matching:
+    1. Must be a student/part-time position.
+    2. Relevant for Industrial Engineering (Information Systems track).
+    3. Exclude classic manufacturing/production roles (like QC or PP&C).
+    
+    Review the jobs on these pages. If you find a good match, return it STRICTLY as a valid JSON object with the following keys:
     "is_relevant_role" (boolean), "is_student_position" (boolean), "location_match" (boolean), 
-    "job_title" (string), "company_name" (string), "job_url" (string URL), "reasoning" (string, short explanation of why it fits the Information Systems/Data criteria and how it matches an IE student).
+    "job_title" (string), "company_name" (string), "job_url" (string URL), "reasoning" (string).
     Do not add any text before or after the JSON.
     """
     
