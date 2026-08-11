@@ -4,7 +4,6 @@ import os
 import requests
 import json
 from browser_use import Agent, Browser
-from browser_use.config import BrowserConfig
 from browser_use.llm import ChatGoogle
 from dotenv import load_dotenv
 
@@ -63,12 +62,11 @@ async def main():
     
     llm = ChatGoogle(model='gemini-2.5-pro', api_key=os.getenv("LLM_API_KEY"))
     
-    # שימוש בהגדרות המעודכנות
-    config = BrowserConfig(
+    # הפתרון: מעבירים את נתוני סביבת הלינוקס ישירות לאובייקט הדפדפן ללא BrowserConfig
+    browser = Browser(
         headless=True,
-        args=['--no-sandbox', '--disable-setuid-sandbox', '--headless']
+        args=['--no-sandbox', '--disable-setuid-sandbox']
     )
-    browser = Browser(config=config)
     
     agent = Agent(task=task_description, llm=llm, browser=browser)
     
