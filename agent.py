@@ -45,9 +45,28 @@ async def main():
     
     task_description = """
     Go DIRECTLY to the following career pages in Israel:
-    1. https://career.rafael.co.il/students/
-    2. https://career.rafael.co.il/search/
-    3. https://www.alljobs.co.il/m/p/company?cid=47510
+    1. https://career.rafael.co.il/students/ (Rafael)
+    2. https://career.rafael.co.il/search/ (Rafael)
+    3. https://www.alljobs.co.il/m/p/company?cid=47510 (Elbit Systems)
+    4. https://jobs.intel.com/en/search-jobs?k=&l=Haifa (Intel Haifa)
+    5. https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite (NVIDIA / Mellanox Yokneam)
+    6. https://jobs.apple.com/en-il/search?location=haifa-HFA (Apple Haifa)
+    7. https://careers.microsoft.com/v2/global/en/home.html (Microsoft Haifa)
+    8. https://careers.philips.com/global/en/search-results?location=Haifa (Philips Healthcare Haifa)
+    9. https://careers.kla.com/jobs/search (KLA Migdal HaEmek)
+    10. https://www.marvell.com/company/careers.html (Marvell Yokneam)
+    11. https://jobs.jnj.com/en/jobs/?search=&location=Yokneam (Biosense Webster Yokneam)
+    12. https://careers.solaredge.com/jobs (SolarEdge North)
+    13. https://careers.ibm.com/job/search/?q=&location=Haifa (IBM Haifa)
+    14. https://careers.amazon.com/search?location=Haifa (Amazon Haifa)
+    15. https://careers.medtronic.com/search-jobs/Yokneam (Medtronic Yokneam)
+    16. https://lumenis.com/careers/ (Lumenis Yokneam)
+    17. https://www.towersemi.com/about/careers/ (Tower Semiconductor Migdal HaEmek)
+    18. https://jobs.checkpointexperience.com/ (Check Point Haifa)
+    19. https://jobs.amdocs.com/ (Amdocs Haifa / Nazareth)
+    20. https://www.zim.com/about-zim/careers (ZIM Haifa)
+    21. https://careers.flex.com/search-jobs (Flex Haifa / Migdal HaEmek)
+    22. https://strauss-group.co.il/careers/ (Strauss Group Karmiel)
     
     Scan the job listings on these pages. 
     Find the BEST match for a student position in Data Analysis, PMO, or Information Systems.
@@ -56,12 +75,13 @@ async def main():
     1. Must be a student/part-time position.
     2. Relevant for Industrial Engineering (Information Systems track).
     3. Exclude classic manufacturing/production roles (like QC or PP&C).
+    4. Must be located in Northern Israel (specifically the area between Haifa, Yokneam, and Karmiel).
     
     Review the jobs on these pages. If you find a good match, return it STRICTLY as a valid JSON object with the following keys:
     "is_relevant_role" (boolean), "is_student_position" (boolean), "location_match" (boolean), 
     "job_title" (string), "company_name" (string), "job_url" (string URL), "reasoning" (string).
     Do not add any text before or after the JSON.
-    """
+"""
     
     llm = ChatGoogle(model='gemini-2.5-pro', api_key=os.getenv("LLM_API_KEY"))
     
