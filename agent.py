@@ -27,7 +27,6 @@ class JobMatch(BaseModel):
 # ==========================================
 async def apply_stealth(page):
     try:
-        # בודק איזו פונקציה קיימת בגרסה המותקנת בשרת
         if hasattr(playwright_stealth, 'stealth_async'):
             await playwright_stealth.stealth_async(page)
         elif hasattr(playwright_stealth, 'stealth'):
@@ -35,7 +34,7 @@ async def apply_stealth(page):
             if asyncio.iscoroutine(result):
                 await result
     except Exception as e:
-        print(f"⚠️ אזהרת Stealth (הסריקה תמשיך): {e}")
+        print(f"⚠️ אזהרת Stealth: {e}")
 
 # ==========================================
 # 2. מסד נתונים וטלגרם
@@ -105,8 +104,9 @@ URLS = [
 async def scrape_and_analyze(url, page, structured_llm):
     print(f"🔍 סורק את: {url}")
     try:
+        # המתנה לטעינה עם פחות רגישות לקריסות
         await page.goto(url, wait_until="domcontentloaded", timeout=45000)
-        await page.wait_for_timeout(3000) 
+        await page.wait_for_timeout(4000) 
         
         page_text = await page.evaluate("document.body.innerText")
         
@@ -151,8 +151,9 @@ async def main():
         print("שגיאה: לא נמצא מפתח API של גוגל בקובץ ה-.env")
         return
 
+    # שינוי למודל 1.5 היציב כדי למנוע שגיאות 404
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash",
+        model="gemini-1.5-flash",
         temperature=0.0,
         google_api_key=api_key
     )
@@ -161,16 +162,24 @@ async def main():
     print("🚀 מתחיל סריקה אמיתית ברחבי הרשת...")
     
     async with async_playwright() as p:
+        # תוספת ארגומנטים קריטיים למניעת קריסות זיכרון ב-GitHub Actions
         browser = await p.chromium.launch(
             headless=True,
-            args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
+            args=[
+                '--no-sandbox', 
+                '--disable-setuid-sandbox', 
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--no-zygote',
+                '--single-process'
+            ]
         )
         context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            ignore_https_errors=True # מתעלם משגיאות אבטחה ברמת השרת שגורמות לנפילות
         )
         page = await context.new_page()
         
-        # שימוש בפונקציה החכמה והבטוחה שמונעת קריסות
         await apply_stealth(page)
         
         for url in URLS:
@@ -184,12 +193,12 @@ async def main():
                         db_conn.commit()
                         
                         send_telegram_alert(job_match)
-                        print(f"✅ נמצאה משרה אמיתית! התראה נשלחה: {job_match.job_title}")
+                        print(f"✅ נמצאה משרה אמיתית! התראה נשלחה: {job_match.job_title} ב-{job_match.company_name}")
                         
                     except sqlite3.IntegrityError:
-                        print(f"⏭️ המשרה כבר קיימת במסד הנתונים ולא תישלח שוב: {job_match.job_title}")
+                        print(f"⏭️ המשרה כבר קיימת במסד הנתונים: {job_match.job_title}")
                 else:
-                    print("⏭️ המשרה שנמצאה אינה תואמת ב-100% לדרישות ולכן לא נשלחה.")
+                    print(f"⏭️ לא נמצאה משרה העונה לדרישות ב-{url}")
         
         await browser.close()
     
