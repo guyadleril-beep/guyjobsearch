@@ -4,7 +4,7 @@ import os
 import requests
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
-from playwright_stealth import stealth_async
+import playwright_stealth
 from pydantic import BaseModel, Field
 from langchain_google_genai import ChatGoogleGenerativeAI
 
@@ -23,7 +23,22 @@ class JobMatch(BaseModel):
     reasoning: str = Field(description="Short explanation of why it matched or why it was rejected")
 
 # ==========================================
-# 2. מסד נתונים וטלגרם (הפונקציות המקוריות שלך)
+# פונקציה חכמה להפעלת מצב Stealth (מונעת קריסות)
+# ==========================================
+async def apply_stealth(page):
+    try:
+        # בודק איזו פונקציה קיימת בגרסה המותקנת בשרת
+        if hasattr(playwright_stealth, 'stealth_async'):
+            await playwright_stealth.stealth_async(page)
+        elif hasattr(playwright_stealth, 'stealth'):
+            result = playwright_stealth.stealth(page)
+            if asyncio.iscoroutine(result):
+                await result
+    except Exception as e:
+        print(f"⚠️ אזהרת Stealth (הסריקה תמשיך): {e}")
+
+# ==========================================
+# 2. מסד נתונים וטלגרם
 # ==========================================
 def setup_db():
     conn = sqlite3.connect('jobs_state.db')
@@ -131,13 +146,11 @@ async def main():
     db_conn = setup_db()
     cursor = db_conn.cursor()
     
-    # תמיכה בשם המשתנה המקורי שלך (LLM_API_KEY) או בסטנדרט של langchain
     api_key = os.getenv("LLM_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not api_key:
         print("שגיאה: לא נמצא מפתח API של גוגל בקובץ ה-.env")
         return
 
-    # אתחול המודל עם יציאת JSON מובנית
     llm = ChatGoogleGenerativeAI(
         model="gemini-2.0-flash",
         temperature=0.0,
@@ -147,19 +160,18 @@ async def main():
     
     print("🚀 מתחיל סריקה אמיתית ברחבי הרשת...")
     
-    # הרצת דפדפן (שמרתי את הארגומנטים שלך לסביבת לינוקס/שרת)
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=True,
-            args=['--no-sandbox', '--disable-setuid-sandbox']
+            args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
         )
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
         page = await context.new_page()
         
-        # עקיפת הגנות נגד בוטים של חברות כמו אינטל ואפל
-        await stealth_async(page)
+        # שימוש בפונקציה החכמה והבטוחה שמונעת קריסות
+        await apply_stealth(page)
         
         for url in URLS:
             job_match = await scrape_and_analyze(url, page, structured_llm)
@@ -167,7 +179,6 @@ async def main():
             if job_match:
                 if job_match.is_relevant_role and job_match.is_student_position and job_match.location_match:
                     try:
-                        # ניסיון הכנסה למסד הנתונים כדי למנוע כפילויות
                         cursor.execute("INSERT INTO jobs (url, title, company) VALUES (?, ?, ?)", 
                                        (job_match.job_url, job_match.job_title, job_match.company_name))
                         db_conn.commit()
