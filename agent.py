@@ -30,7 +30,7 @@ async def apply_stealth(page):
             result = playwright_stealth.stealth(page)
             if asyncio.iscoroutine(result):
                 await result
-    except Exception as e:
+    except Exception:
         pass # התעלמות שקטה מאזהרות Stealth
 
 # ==========================================
@@ -94,21 +94,19 @@ URLS = [
 # 4. לוגיקת הסריקה והניתוח
 # ==========================================
 async def scrape_and_analyze(url, page, structured_llm):
-    print(f"🔍 סורק את: {url}")
+    print(f"🔍 מנסה לגשת אל: {url}")
     try:
-        # ניסיון גלישה עם הגדרות גמישות יותר לרשת של גיטהאב
-        response = await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        response = await page.goto(url, wait_until="domcontentloaded", timeout=45000)
         
-        # אם האתר חסם את הגישה ברמת הרשת
         if response and response.status in [403, 401]:
-            print(f"❌ נחסמה הגישה לאתר (Anti-Bot): {url}")
+            print(f"❌ נחסמה הגישה (חומת אש / Anti-Bot של החברה): {url}")
             return None
             
-        await page.wait_for_timeout(4000) 
+        await page.wait_for_timeout(5000) 
         page_text = await page.evaluate("document.body.innerText")
         
         if not page_text or len(page_text.strip()) < 50:
-            print(f"❌ לא נמצא תוכן משמעותי באתר {url}")
+            print(f"❌ האתר נטען אך לא נמצא טקסט קריא: {url}")
             return None
 
         prompt = f"""
@@ -133,7 +131,9 @@ async def scrape_and_analyze(url, page, structured_llm):
         return result
         
     except Exception as e:
-        print(f"⚠️ שגיאת רשת בשליפת הטקסט (ייתכן חסימת שרת מצידם): {e}")
+        # חיתוך השגיאה הארוכה כדי שהלוג יהיה קריא
+        error_msg = str(e).split('Call log:')[0].strip()
+        print(f"⚠️ שגיאה בטעינת האתר: {error_msg}")
         return None
 
 # ==========================================
@@ -148,9 +148,9 @@ async def main():
         print("שגיאה: לא נמצא מפתח API של גוגל בקובץ ה-.env")
         return
 
-    # שינוי למודל gemini-1.5-pro שתמיד נתמך ומוכר על ידי langchain
+    # שינוי קריטי 1: שימוש בגרסה ה'אחרונה' כדי למנוע את שגיאת ה-404
     llm = ChatGoogleGenerativeAI(
-        model="gemini-1.5-pro",
+        model="gemini-1.5-pro-latest",
         temperature=0.0,
         google_api_key=api_key,
         max_retries=2
@@ -170,19 +170,20 @@ async def main():
                 '--no-zygote',
                 '--single-process',
                 '--disable-blink-features=AutomationControlled',
-                '--dns-prefetch-disable'
+                '--dns-prefetch-disable',
+                '--window-size=1920,1080'
             ]
         )
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            ignore_https_errors=True,
-            viewport={'width': 1920, 'height': 1080}
-        )
-        page = await context.new_page()
-        
-        await apply_stealth(page)
         
         for url in URLS:
+            # שינוי קריטי 2: יצירת חלון נפרד לכל אתר וסגירתו. מונע קריסה שרשרתית!
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                ignore_https_errors=True
+            )
+            page = await context.new_page()
+            await apply_stealth(page)
+            
             job_match = await scrape_and_analyze(url, page, structured_llm)
             
             if job_match:
@@ -197,8 +198,12 @@ async def main():
                         print(f"⏭️ המשרה כבר קיימת במסד הנתונים: {job_match.job_title}")
                 else:
                     print(f"⏭️ לא נמצאה משרה העונה במדויק לדרישות ב-{url}")
-        
+            
+            # סגירת הלשונית בסיום הסריקה כדי לנקות את הזיכרון לאתר הבא
+            await context.close()
+            
         await browser.close()
+    
     db_conn.close()
     print("✅ הסריקה הסתיימה בהצלחה.")
 
