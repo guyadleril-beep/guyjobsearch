@@ -11,7 +11,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 load_dotenv()
 
 # ==========================================
-# 1. הגדרת המבנה שאנחנו דורשים מ-Gemini להחזיר
+# 1. הגדרת המבנה המבוקש מ-Gemini
 # ==========================================
 class JobMatch(BaseModel):
     is_relevant_role: bool = Field(description="Is it Data Analysis, PMO, or Information Systems?")
@@ -22,9 +22,6 @@ class JobMatch(BaseModel):
     job_url: str = Field(description="The URL to apply for the job")
     reasoning: str = Field(description="Short explanation of why it matched or why it was rejected")
 
-# ==========================================
-# פונקציה חכמה להפעלת מצב Stealth (מונעת קריסות)
-# ==========================================
 async def apply_stealth(page):
     try:
         if hasattr(playwright_stealth, 'stealth_async'):
@@ -34,7 +31,7 @@ async def apply_stealth(page):
             if asyncio.iscoroutine(result):
                 await result
     except Exception as e:
-        print(f"⚠️ אזהרת Stealth: {e}")
+        pass # התעלמות שקטה מאזהרות Stealth
 
 # ==========================================
 # 2. מסד נתונים וטלגרם
@@ -51,7 +48,6 @@ def send_telegram_alert(job: JobMatch):
     token = os.getenv("TELEGRAM_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
     if not token or not chat_id:
-        print("⚠️ חסרים נתוני טלגרם, מדלג על שליחת התראה.")
         return
         
     url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -63,11 +59,7 @@ def send_telegram_alert(job: JobMatch):
         f"<a href='{job.job_url}'>למעבר לעמוד המשרה לחץ כאן</a>"
     )
     
-    payload = {
-        "chat_id": chat_id,
-        "text": message,
-        "parse_mode": "HTML"
-    }
+    payload = {"chat_id": chat_id, "text": message, "parse_mode": "HTML"}
     requests.post(url, data=payload)
 
 # ==========================================
@@ -104,10 +96,15 @@ URLS = [
 async def scrape_and_analyze(url, page, structured_llm):
     print(f"🔍 סורק את: {url}")
     try:
-        # המתנה לטעינה עם פחות רגישות לקריסות
-        await page.goto(url, wait_until="domcontentloaded", timeout=45000)
-        await page.wait_for_timeout(4000) 
+        # ניסיון גלישה עם הגדרות גמישות יותר לרשת של גיטהאב
+        response = await page.goto(url, wait_until="domcontentloaded", timeout=60000)
         
+        # אם האתר חסם את הגישה ברמת הרשת
+        if response and response.status in [403, 401]:
+            print(f"❌ נחסמה הגישה לאתר (Anti-Bot): {url}")
+            return None
+            
+        await page.wait_for_timeout(4000) 
         page_text = await page.evaluate("document.body.innerText")
         
         if not page_text or len(page_text.strip()) < 50:
@@ -136,7 +133,7 @@ async def scrape_and_analyze(url, page, structured_llm):
         return result
         
     except Exception as e:
-        print(f"⚠️ שגיאה בשליפת הטקסט מ-{url}: {e}")
+        print(f"⚠️ שגיאת רשת בשליפת הטקסט (ייתכן חסימת שרת מצידם): {e}")
         return None
 
 # ==========================================
@@ -151,18 +148,18 @@ async def main():
         print("שגיאה: לא נמצא מפתח API של גוגל בקובץ ה-.env")
         return
 
-    # שינוי למודל 1.5 היציב כדי למנוע שגיאות 404
+    # שינוי למודל gemini-1.5-pro שתמיד נתמך ומוכר על ידי langchain
     llm = ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash",
+        model="gemini-1.5-pro",
         temperature=0.0,
-        google_api_key=api_key
+        google_api_key=api_key,
+        max_retries=2
     )
     structured_llm = llm.with_structured_output(JobMatch)
     
     print("🚀 מתחיל סריקה אמיתית ברחבי הרשת...")
     
     async with async_playwright() as p:
-        # תוספת ארגומנטים קריטיים למניעת קריסות זיכרון ב-GitHub Actions
         browser = await p.chromium.launch(
             headless=True,
             args=[
@@ -171,12 +168,15 @@ async def main():
                 '--disable-dev-shm-usage',
                 '--disable-gpu',
                 '--no-zygote',
-                '--single-process'
+                '--single-process',
+                '--disable-blink-features=AutomationControlled',
+                '--dns-prefetch-disable'
             ]
         )
         context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            ignore_https_errors=True # מתעלם משגיאות אבטחה ברמת השרת שגורמות לנפילות
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            ignore_https_errors=True,
+            viewport={'width': 1920, 'height': 1080}
         )
         page = await context.new_page()
         
@@ -191,17 +191,14 @@ async def main():
                         cursor.execute("INSERT INTO jobs (url, title, company) VALUES (?, ?, ?)", 
                                        (job_match.job_url, job_match.job_title, job_match.company_name))
                         db_conn.commit()
-                        
                         send_telegram_alert(job_match)
                         print(f"✅ נמצאה משרה אמיתית! התראה נשלחה: {job_match.job_title} ב-{job_match.company_name}")
-                        
                     except sqlite3.IntegrityError:
                         print(f"⏭️ המשרה כבר קיימת במסד הנתונים: {job_match.job_title}")
                 else:
-                    print(f"⏭️ לא נמצאה משרה העונה לדרישות ב-{url}")
+                    print(f"⏭️ לא נמצאה משרה העונה במדויק לדרישות ב-{url}")
         
         await browser.close()
-    
     db_conn.close()
     print("✅ הסריקה הסתיימה בהצלחה.")
 
