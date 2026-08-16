@@ -31,7 +31,7 @@ async def apply_stealth(page):
             if asyncio.iscoroutine(result):
                 await result
     except Exception:
-        pass # התעלמות שקטה מאזהרות Stealth
+        pass # התעלמות שקטה
 
 # ==========================================
 # 2. מסד נתונים וטלגרם
@@ -102,7 +102,7 @@ async def scrape_and_analyze(url, page, structured_llm):
             print(f"❌ נחסמה הגישה (חומת אש / Anti-Bot של החברה): {url}")
             return None
             
-        await page.wait_for_timeout(5000) 
+        await page.wait_for_timeout(4000) 
         page_text = await page.evaluate("document.body.innerText")
         
         if not page_text or len(page_text.strip()) < 50:
@@ -127,13 +127,13 @@ async def scrape_and_analyze(url, page, structured_llm):
         {page_text[:40000]}
         """
         
+        # הרצת מודל ה-AI
         result = await structured_llm.ainvoke(prompt)
         return result
         
     except Exception as e:
-        # חיתוך השגיאה הארוכה כדי שהלוג יהיה קריא
         error_msg = str(e).split('Call log:')[0].strip()
-        print(f"⚠️ שגיאה בטעינת האתר: {error_msg}")
+        print(f"⚠️ שגיאה: {error_msg}")
         return None
 
 # ==========================================
@@ -148,9 +148,9 @@ async def main():
         print("שגיאה: לא נמצא מפתח API של גוגל בקובץ ה-.env")
         return
 
-    # שינוי קריטי 1: שימוש בגרסה ה'אחרונה' כדי למנוע את שגיאת ה-404
+    # שימוש בשם המודל הבסיסי ביותר כדי למנוע שגיאות 404 לחלוטין
     llm = ChatGoogleGenerativeAI(
-        model="gemini-1.5-pro-latest",
+        model="gemini-1.5-pro",
         temperature=0.0,
         google_api_key=api_key,
         max_retries=2
@@ -160,6 +160,7 @@ async def main():
     print("🚀 מתחיל סריקה אמיתית ברחבי הרשת...")
     
     async with async_playwright() as p:
+        # הוסרו כל הדגלים ה"מסוכנים" שגרמו לדפדפן לקרוס במערכת לינוקס
         browser = await p.chromium.launch(
             headless=True,
             args=[
@@ -167,40 +168,39 @@ async def main():
                 '--disable-setuid-sandbox', 
                 '--disable-dev-shm-usage',
                 '--disable-gpu',
-                '--no-zygote',
-                '--single-process',
-                '--disable-blink-features=AutomationControlled',
-                '--dns-prefetch-disable',
                 '--window-size=1920,1080'
             ]
         )
         
         for url in URLS:
-            # שינוי קריטי 2: יצירת חלון נפרד לכל אתר וסגירתו. מונע קריסה שרשרתית!
-            context = await browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                ignore_https_errors=True
-            )
-            page = await context.new_page()
-            await apply_stealth(page)
-            
-            job_match = await scrape_and_analyze(url, page, structured_llm)
-            
-            if job_match:
-                if job_match.is_relevant_role and job_match.is_student_position and job_match.location_match:
-                    try:
-                        cursor.execute("INSERT INTO jobs (url, title, company) VALUES (?, ?, ?)", 
-                                       (job_match.job_url, job_match.job_title, job_match.company_name))
-                        db_conn.commit()
-                        send_telegram_alert(job_match)
-                        print(f"✅ נמצאה משרה אמיתית! התראה נשלחה: {job_match.job_title} ב-{job_match.company_name}")
-                    except sqlite3.IntegrityError:
-                        print(f"⏭️ המשרה כבר קיימת במסד הנתונים: {job_match.job_title}")
-                else:
-                    print(f"⏭️ לא נמצאה משרה העונה במדויק לדרישות ב-{url}")
-            
-            # סגירת הלשונית בסיום הסריקה כדי לנקות את הזיכרון לאתר הבא
-            await context.close()
+            try:
+                context = await browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                    ignore_https_errors=True
+                )
+                page = await context.new_page()
+                await apply_stealth(page)
+                
+                job_match = await scrape_and_analyze(url, page, structured_llm)
+                
+                if job_match:
+                    if job_match.is_relevant_role and job_match.is_student_position and job_match.location_match:
+                        try:
+                            cursor.execute("INSERT INTO jobs (url, title, company) VALUES (?, ?, ?)", 
+                                           (job_match.job_url, job_match.job_title, job_match.company_name))
+                            db_conn.commit()
+                            send_telegram_alert(job_match)
+                            print(f"✅ נמצאה משרה אמיתית! התראה נשלחה: {job_match.job_title} ב-{job_match.company_name}")
+                        except sqlite3.IntegrityError:
+                            print(f"⏭️ המשרה כבר קיימת במסד הנתונים: {job_match.job_title}")
+                    else:
+                        print(f"⏭️ לא נמצאה משרה העונה במדויק לדרישות ב-{url}")
+                
+                await context.close()
+                
+            except Exception as e:
+                # גם אם אתר ספציפי משתגע לגמרי וגורם לקריסה, הוא לא יפיל את כל הסקריפט
+                print(f"⚠️ קריסת דפדפן באתר {url}, ממשיך לאתר הבא. שגיאה: {e}")
             
         await browser.close()
     
